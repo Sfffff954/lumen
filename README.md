@@ -104,7 +104,7 @@ whole interface, and each feature lives in its own module (see *Project layout* 
 ## 🚀 Quick start
 
 ```bash
-git clone https://github.com/YOUR-NAME/lumen.git
+git clone git@github.com:Sfffff954/lumen.git
 cd lumen
 ./setup-linux.sh        # one-time: system packages, Python venv, voice, app-menu entry
 ./start-mac-linux.sh    # or click "Lumen" in your app menu
