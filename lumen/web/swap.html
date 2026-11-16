@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lumen · Tausch in Phantom bestätigen</title>
+<style>
+:root{--bg:#F2F4F3;--surface:#FFFFFF;--sunk:#E7EBE9;--line:#D6DDDA;--fg:#15211E;--muted:#5D6B67;--accent:#B4581C;--ink:#fff;--bad:#B3261E;--good:#1E7B4F;color-scheme:light}
+@media (prefers-color-scheme:dark){:root{--bg:#0D1312;--surface:#151D1C;--sunk:#1C2625;--line:#26322F;--fg:#E6EEEB;--muted:#8D9C97;--accent:#F2B66D;--ink:#1A1208;--bad:#F2867E;--good:#6FD3A0;color-scheme:dark}}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+.card{width:min(460px,100%);background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:22px}
+h1{font-size:19px;margin:0 0 4px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 16px}
+.big{font-size:22px;font-weight:700;margin:6px 0;font-variant-numeric:tabular-nums}
+.arrow{color:var(--muted);font-size:14px}
+dl{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;margin:14px 0;font-size:13.5px}
+dt{color:var(--muted)}dd{margin:0;text-align:right;font-variant-numeric:tabular-nums;word-break:break-all}
+.warn{background:color-mix(in srgb,var(--bad) 12%,transparent);color:var(--bad);border-radius:10px;padding:8px 10px;font-size:13px;margin:6px 0}
+.ok{background:color-mix(in srgb,var(--good) 14%,transparent);color:var(--good);border-radius:10px;padding:10px;font-size:14px;margin:10px 0}
+button{width:100%;border:0;border-radius:12px;padding:13px;font:600 15px system-ui;background:var(--accent);color:var(--ink);cursor:pointer;margin-top:8px}
+button.sec{background:var(--sunk);color:var(--fg)}
+button:disabled{opacity:.5;cursor:default}
+a{color:var(--accent)}
+small{color:var(--muted);display:block;margin-top:12px;font-size:12px}
+#st{min-height:22px;font-size:13.5px;margin-top:10px}
+</style>
+</head>
+<body>
+<main class="card" id="app"><p>Lade …</p></main>
+<script src="/vendor/solana-web3.js"></script>
+<script>
+const TOKEN = "__LUMEN_TOKEN__", SID = new URLSearchParams(location.search).get("id");
+const $ = s => document.querySelector(s);
+const api = (body) => fetch("/api/trade", { method: "POST", headers: { "content-type": "application/json", "x-lumen-token": TOKEN }, body: JSON.stringify(body) }).then(r => r.json());
+const fmt = n => n == null ? "–" : Number(n).toLocaleString("de-DE", { maximumSignificantDigits: 6 });
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function provider() { return window.phantom?.solana?.isPhantom ? window.phantom.solana : (window.solana?.isPhantom ? window.solana : null); }
+function status(t, cls) { const s = $("#st"); s.className = cls || ""; s.innerHTML = t; }
+(async () => {
+  const r = await api({ action: "swap_info", id: SID });
+  const app = $("#app");
+  if (!r.ok) { app.innerHTML = `<h1>Tausch nicht gefunden</h1><p class="sub">${esc(r.text || "Abgelaufen – bitte in Lumen neu vorbereiten.")}</p>`; return; }
+  const s = r.swap;
+  app.innerHTML = `<h1>Tausch in Phantom bestätigen</h1><p class="sub">Lumen hat den Tausch nur vorbereitet. Ausgeführt wird er erst, wenn du in Phantom unterschreibst.</p>
+    <div class="big">${fmt(s.menge)} ${esc(s.von)}</div><div class="arrow">↓ ca.</div><div class="big">${fmt(s.erwartet)} ${esc(s.nach)}</div>
+    <dl><dt>Mindestens</dt><dd>${fmt(s.minimum)} ${esc(s.nach)}</dd><dt>Wert</dt><dd>${s.eur ? fmt(s.eur) + " €" : "–"}</dd>
+    <dt>Slippage</dt><dd>${s.slippage_pct} %</dd><dt>Preiseinfluss</dt><dd>${fmt(s.preiseinfluss_pct)} %</dd><dt>Route</dt><dd>${esc(s.route)} (Jupiter)</dd>
+    <dt>Von-Token</dt><dd><a href="https://solscan.io/token/${esc(s.von_mint)}" target="_blank" rel="noopener">${esc(s.von_mint.slice(0, 6))}…</a></dd>
+    <dt>Nach-Token</dt><dd><a href="https://solscan.io/token/${esc(s.nach_mint)}" target="_blank" rel="noopener">${esc(s.nach_mint.slice(0, 6))}…</a></dd></dl>
+    ${(s.warnungen || []).map(w => `<div class="warn">${esc(w)}</div>`).join("")}
+    <button id="go" ${s.blockiert || s.status === "ausgeführt" ? "disabled" : ""}>👻 Mit Phantom verbinden &amp; prüfen</button>
+    <button class="sec" id="no">Abbrechen</button><div id="st"></div>
+    <small>Phantom zeigt dir den Tausch noch einmal mit Simulation an – prüfe Beträge, dann „Bestätigen“. Lumen sieht nie deine Seed-Phrase oder deinen privaten Schlüssel und kann ohne deine Unterschrift nichts ausführen.</small>`;
+  if (s.status === "ausgeführt") status("Dieser Tausch wurde schon ausgeführt.", "ok");
+  $("#no").onclick = async () => { await api({ action: "swap_done", id: SID, ok: false, error: "abgebrochen" }); status("Abgebrochen – es ist nichts passiert. Du kannst das Fenster schließen."); $("#go").disabled = true; };
+  $("#go").onclick = async () => {
+    const p = provider();
+    if (!p) { status(`Phantom nicht gefunden. Öffne diese Seite in dem Browser, in dem die <a href="https://phantom.app/download" target="_blank" rel="noopener">Phantom-Erweiterung</a> installiert ist – oder nutze den Jupiter-Link in Lumen (geht auch am Handy).`); return; }
+    const btn = $("#go"); btn.disabled = true;
+    try {
+      status("Verbinde mit Phantom …");
+      const { publicKey } = await p.connect();
+      const pk = publicKey.toString();
+      if (s.erwartete_wallet && s.erwartete_wallet !== pk && !confirm(`Phantom nutzt die Wallet ${pk.slice(0, 4)}…${pk.slice(-4)}, in Lumen ist ${s.erwartete_wallet.slice(0, 4)}…${s.erwartete_wallet.slice(-4)} hinterlegt. Trotzdem mit dieser Wallet tauschen?`)) { btn.disabled = false; status(""); return; }
+      status("Hole aktuelle Transaktion von Jupiter …");
+      const t = await api({ action: "swap_tx", id: SID, pubkey: pk });
+      if (!t.ok) throw new Error(t.text);
+      const bytes = Uint8Array.from(atob(t.tx), c => c.charCodeAt(0));
+      const tx = solanaWeb3.VersionedTransaction.deserialize(bytes);
+      status("Bitte in Phantom prüfen und bestätigen …");
+      const res = await p.signAndSendTransaction(tx);
+      const sig = res.signature || res;
+      await api({ action: "swap_done", id: SID, ok: true, signature: sig });
+      status(`✅ Gesendet! Ca. ${fmt(t.erwartet)} ${esc(t.symbol)} kommen in deine Wallet. <a href="https://solscan.io/tx/${esc(sig)}" target="_blank" rel="noopener">Auf Solscan ansehen</a>`, "ok");
+    } catch (e) {
+      const msg = String(e?.message || e);
+      const rejected = /reject|declin|cancel|abgelehnt|4001/i.test(msg) || e?.code === 4001;
+      await api({ action: "swap_done", id: SID, ok: false, error: rejected ? "in Phantom abgelehnt" : msg });
+      status(rejected ? "In Phantom abgelehnt – es ist nichts passiert." : "Fehler: " + esc(msg), rejected ? "" : "warn");
+      btn.disabled = rejected;
+    }
+  };
+})();
+</script>
+</body>
+</html>
